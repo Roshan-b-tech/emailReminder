@@ -37,12 +37,16 @@ mongoose.connect(process.env.MONGODB_URI)
     });
 
 //email transporter setup 
-
 const transport = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // true for 465, false for other ports
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
+    },
+    tls: {
+        rejectUnauthorized: false
     }
 });
 
@@ -50,8 +54,15 @@ const transport = nodemailer.createTransport({
 transport.verify(function (error, success) {
     if (error) {
         console.error('Email transporter configuration error:', error);
+        console.error('Email config:', {
+            user: process.env.EMAIL_USER,
+            hasPassword: !!process.env.EMAIL_PASS,
+            host: 'smtp.gmail.com',
+            port: 587
+        });
     } else {
         console.log('Email transporter is ready to send messages');
+        console.log('Using email:', process.env.EMAIL_USER);
     }
 });
 
@@ -132,21 +143,31 @@ cron.schedule('* * * * *', async () => {
         console.log(`Found ${reminders.length} reminders to send`);
 
         for (const reminder of reminders) {
-            console.log(`Sending email to ${reminder.email}...`);
+            console.log(`Attempting to send email to ${reminder.email}...`);
             try {
-                await transport.sendMail({
-                    from: process.env.EMAIL_USER,
+                const mailOptions = {
+                    from: `"Email Reminder" <${process.env.EMAIL_USER}>`,
                     to: reminder.email,
                     subject: 'Reminder',
                     text: reminder.message,
-                });
-                console.log(`Email sent successfully to ${reminder.email}`);
+                    html: `<p>${reminder.message}</p>`
+                };
+
+                const info = await transport.sendMail(mailOptions);
+                console.log('Message sent:', info.messageId);
+                console.log('Preview URL:', nodemailer.getTestMessageUrl(info));
 
                 reminder.sent = true;
                 await reminder.save();
                 console.log(`Updated reminder status for ${reminder.email}`);
             } catch (emailError) {
-                console.error(`Error sending email to ${reminder.email}:`, emailError);
+                console.error('Email sending failed:', {
+                    error: emailError.message,
+                    code: emailError.code,
+                    command: emailError.command,
+                    responseCode: emailError.responseCode,
+                    response: emailError.response
+                });
             }
         }
     } catch (error) {
