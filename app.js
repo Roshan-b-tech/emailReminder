@@ -1,22 +1,21 @@
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
-
 const path = require('path');
-
 const cron = require('node-cron');
-
 const nodemailer = require('nodemailer');
-
 const expressLayouts = require('express-ejs-layouts');
+const cors = require('cors');
 
 const Reminder = require('./models/reminder');
 const { title } = require('process');
 
 const app = express();
 
-app.use(express.urlencoded({ extended: true }));
+// Enable CORS
+app.use(cors());
 
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 app.set('view engine', 'ejs');
