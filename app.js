@@ -127,24 +127,19 @@ app.get('/reminders', async (req, res) => {
 
 //cron job to send emails
 
-cron.schedule('*/5 * * * *', async () => {
+cron.schedule('* * * * *', async () => {
     try {
         console.log('Checking for reminders to send...');
         const now = new Date();
-        console.log('Current time:', now.toISOString());
-
         const reminders = await Reminder.find({
             scheduledTime: { $lte: now },
             sent: false
-        }).limit(10); // Limit to 10 reminders per batch
+        });
 
         console.log(`Found ${reminders.length} reminders to send`);
-        if (reminders.length > 0) {
-            console.log('Reminders found:', reminders);
-        }
 
         for (const reminder of reminders) {
-            console.log(`Processing reminder for ${reminder.email} scheduled for ${reminder.scheduledTime}`);
+            console.log(`Sending email to ${reminder.email}...`);
             try {
                 await transport.sendMail({
                     from: process.env.EMAIL_USER,
@@ -166,33 +161,10 @@ cron.schedule('*/5 * * * *', async () => {
     }
 });
 
-// start the server
+// start th server
+
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(PORT, () => {
-    console.log(`server is running in port ${PORT}`);
-});
-
-// Handle server errors
-server.on('error', (error) => {
-    console.error('Server error:', error);
-});
-
-// Handle process termination
-process.on('SIGTERM', () => {
-    console.log('SIGTERM signal received: closing HTTP server');
-    server.close(() => {
-        console.log('HTTP server closed');
-        process.exit(0);
-    });
-});
-
-process.on('SIGINT', () => {
-    console.log('SIGINT signal received: closing HTTP server');
-    server.close(() => {
-        console.log('HTTP server closed');
-        process.exit(0);
-    });
-});
+app.listen(PORT, console.log(`server is running in port ${PORT}`));
 
 
