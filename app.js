@@ -88,20 +88,26 @@ app.get('/schedule', (req, res) => {
 app.post('/schedule', async (req, res) => {
     try {
         const { email, message, datetime } = req.body;
+        console.log('Received schedule request:', { email, message, datetime });
+
+        // Convert datetime to UTC
+        const scheduledTime = new Date(datetime);
+        console.log('Converted scheduled time:', scheduledTime.toISOString());
+
         const newReminder = new Reminder({
             email,
             message,
-            scheduledTime: new Date(datetime)
+            scheduledTime
         });
 
         await newReminder.save();
-        console.log(newReminder);
+        console.log('Saved reminder:', newReminder);
         res.redirect('/schedule?success=true');
     } catch (error) {
         console.error('Error saving reminder:', error);
         res.redirect('/schedule?error=true');
     }
-})
+});
 
 //getting all reminders
 
@@ -125,15 +131,20 @@ cron.schedule('* * * * *', async () => {
     try {
         console.log('Checking for reminders to send...');
         const now = new Date();
+        console.log('Current time:', now.toISOString());
+
         const reminders = await Reminder.find({
             scheduledTime: { $lte: now },
             sent: false
         });
 
         console.log(`Found ${reminders.length} reminders to send`);
+        if (reminders.length > 0) {
+            console.log('Reminders found:', reminders);
+        }
 
         for (const reminder of reminders) {
-            console.log(`Sending email to ${reminder.email}...`);
+            console.log(`Processing reminder for ${reminder.email} scheduled for ${reminder.scheduledTime}`);
             try {
                 await transport.sendMail({
                     from: process.env.EMAIL_USER,
