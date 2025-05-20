@@ -90,14 +90,16 @@ app.post('/schedule', async (req, res) => {
         const { email, message, datetime } = req.body;
         console.log('Received schedule request:', { email, message, datetime });
 
-        // Convert datetime to UTC
-        const scheduledTime = new Date(datetime);
-        console.log('Converted scheduled time:', scheduledTime.toISOString());
+        // Convert local datetime to UTC
+        const localDate = new Date(datetime);
+        const utcDate = new Date(localDate.getTime() - localDate.getTimezoneOffset() * 60000);
+        console.log('Local time:', localDate.toISOString());
+        console.log('UTC time:', utcDate.toISOString());
 
         const newReminder = new Reminder({
             email,
             message,
-            scheduledTime
+            scheduledTime: utcDate
         });
 
         await newReminder.save();
@@ -114,8 +116,14 @@ app.post('/schedule', async (req, res) => {
 app.get('/reminders', async (req, res) => {
     try {
         const reminders = await Reminder.find().sort({ scheduledTime: 1 });
+        // Convert UTC times to local time for display
+        const localReminders = reminders.map(reminder => ({
+            ...reminder.toObject(),
+            scheduledTime: new Date(reminder.scheduledTime).toLocaleString()
+        }));
+
         res.render('reminders', {
-            reminders,
+            reminders: localReminders,
             title: "Reminders - Email Reminder",
             currentPage: "reminders"
         });
@@ -131,12 +139,19 @@ cron.schedule('* * * * *', async () => {
     try {
         console.log('Checking for reminders to send...');
         const now = new Date();
+        console.log('Current UTC time:', now.toISOString());
+
         const reminders = await Reminder.find({
             scheduledTime: { $lte: now },
             sent: false
         });
 
         console.log(`Found ${reminders.length} reminders to send`);
+        if (reminders.length > 0) {
+            reminders.forEach(reminder => {
+                console.log(`Reminder scheduled for: ${reminder.scheduledTime.toISOString()}`);
+            });
+        }
 
         for (const reminder of reminders) {
             console.log(`Sending email to ${reminder.email}...`);
