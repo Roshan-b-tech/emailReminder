@@ -135,16 +135,21 @@ app.get('/reminders', async (req, res) => {
 
 //cron job to send emails
 
-cron.schedule('* * * * *', async () => {
+cron.schedule('*/5 * * * *', async () => {
     try {
         console.log('Checking for reminders to send...');
         const now = new Date();
         console.log('Current UTC time:', now.toISOString());
 
+        // Find reminders that are due in the last 5 minutes
+        const fiveMinutesAgo = new Date(now.getTime() - 5 * 60000);
         const reminders = await Reminder.find({
-            scheduledTime: { $lte: now },
+            scheduledTime: {
+                $gte: fiveMinutesAgo,
+                $lte: now
+            },
             sent: false
-        });
+        }).limit(5); // Process only 5 reminders at a time
 
         console.log(`Found ${reminders.length} reminders to send`);
         if (reminders.length > 0) {
@@ -154,8 +159,8 @@ cron.schedule('* * * * *', async () => {
         }
 
         for (const reminder of reminders) {
-            console.log(`Sending email to ${reminder.email}...`);
             try {
+                console.log(`Sending email to ${reminder.email}...`);
                 await transport.sendMail({
                     from: process.env.EMAIL_USER,
                     to: reminder.email,
@@ -169,17 +174,54 @@ cron.schedule('* * * * *', async () => {
                 console.log(`Updated reminder status for ${reminder.email}`);
             } catch (emailError) {
                 console.error(`Error sending email to ${reminder.email}:`, emailError);
+                // Don't throw error, continue with next reminder
             }
         }
     } catch (error) {
         console.error('Error in email cron job:', error);
+        // Don't throw error, let the cron job continue running
     }
 });
 
-// start th server
-
+// start the server
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, console.log(`server is running in port ${PORT}`));
+const server = app.listen(PORT, () => {
+    console.log(`server is running in port ${PORT}`);
+});
+
+// Handle server errors
+server.on('error', (error) => {
+    console.error('Server error:', error);
+});
+
+// Handle process termination
+process.on('SIGTERM', () => {
+    console.log('SIGTERM signal received: closing HTTP server');
+    server.close(() => {
+        console.log('HTTP server closed');
+        process.exit(0);
+    });
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT signal received: closing HTTP server');
+    server.close(() => {
+        console.log('HTTP server closed');
+        process.exit(0);
+    });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    // Don't exit the process, let it continue running
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // Don't exit the process, let it continue running
+});
 
 
