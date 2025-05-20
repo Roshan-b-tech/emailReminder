@@ -98,6 +98,8 @@ app.get('/schedule', (req, res) => {
 app.post('/schedule', async (req, res) => {
     try {
         const { email, message, datetime } = req.body;
+        console.log('Received schedule request:', { email, message, datetime });
+
         const newReminder = new Reminder({
             email,
             message,
@@ -105,7 +107,13 @@ app.post('/schedule', async (req, res) => {
         });
 
         await newReminder.save();
-        console.log(newReminder);
+        console.log('Saved reminder:', {
+            id: newReminder._id,
+            email: newReminder.email,
+            scheduledTime: newReminder.scheduledTime,
+            message: newReminder.message
+        });
+
         res.redirect('/schedule?success=true');
     } catch (error) {
         console.error('Error saving reminder:', error);
@@ -135,15 +143,25 @@ cron.schedule('* * * * *', async () => {
     try {
         console.log('Checking for reminders to send...');
         const now = new Date();
+        console.log('Current time:', now.toISOString());
+
         const reminders = await Reminder.find({
             scheduledTime: { $lte: now },
             sent: false
-        });
+        }).sort({ scheduledTime: 1 });
 
         console.log(`Found ${reminders.length} reminders to send`);
+        if (reminders.length > 0) {
+            console.log('Reminders found:', reminders.map(r => ({
+                id: r._id,
+                email: r.email,
+                scheduledTime: r.scheduledTime,
+                message: r.message
+            })));
+        }
 
         for (const reminder of reminders) {
-            console.log(`Attempting to send email to ${reminder.email}...`);
+            console.log(`Processing reminder for ${reminder.email} scheduled for ${reminder.scheduledTime}`);
             try {
                 const mailOptions = {
                     from: `"Email Reminder" <${process.env.EMAIL_USER}>`,
