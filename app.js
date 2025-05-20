@@ -28,14 +28,33 @@ app.set("layout", "layout");
 
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+    family: 4
+})
     .then(() => {
         console.log("Connected to MongoDB...");
     })
     .catch((error) => {
         console.error("Error connecting to MongoDB:", error);
-        process.exit(1); // Exit if cannot connect to database
+        // Don't exit the process, let it retry
     });
+
+// Handle MongoDB connection events
+mongoose.connection.on('error', (err) => {
+    console.error('MongoDB connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+    console.log('MongoDB disconnected. Attempting to reconnect...');
+});
+
+mongoose.connection.on('reconnected', () => {
+    console.log('MongoDB reconnected successfully');
+});
 
 //email transporter setup 
 
