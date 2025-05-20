@@ -28,33 +28,14 @@ app.set("layout", "layout");
 
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000,
-    family: 4
-})
+mongoose.connect(process.env.MONGODB_URI)
     .then(() => {
         console.log("Connected to MongoDB...");
     })
     .catch((error) => {
         console.error("Error connecting to MongoDB:", error);
-        // Don't exit the process, let it retry
+        process.exit(1); // Exit if cannot connect to database
     });
-
-// Handle MongoDB connection events
-mongoose.connection.on('error', (err) => {
-    console.error('MongoDB connection error:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-    console.log('MongoDB disconnected. Attempting to reconnect...');
-});
-
-mongoose.connection.on('reconnected', () => {
-    console.log('MongoDB reconnected successfully');
-});
 
 //email transporter setup 
 
@@ -107,42 +88,28 @@ app.get('/schedule', (req, res) => {
 app.post('/schedule', async (req, res) => {
     try {
         const { email, message, datetime } = req.body;
-        console.log('Received schedule request:', { email, message, datetime });
-
-        // Convert local datetime to UTC
-        const localDate = new Date(datetime);
-        const utcDate = new Date(localDate.getTime() - localDate.getTimezoneOffset() * 60000);
-        console.log('Local time:', localDate.toISOString());
-        console.log('UTC time:', utcDate.toISOString());
-
         const newReminder = new Reminder({
             email,
             message,
-            scheduledTime: utcDate
+            scheduledTime: new Date(datetime)
         });
 
         await newReminder.save();
-        console.log('Saved reminder:', newReminder);
+        console.log(newReminder);
         res.redirect('/schedule?success=true');
     } catch (error) {
         console.error('Error saving reminder:', error);
         res.redirect('/schedule?error=true');
     }
-});
+})
 
 //getting all reminders
 
 app.get('/reminders', async (req, res) => {
     try {
         const reminders = await Reminder.find().sort({ scheduledTime: 1 });
-        // Convert UTC times to local time for display
-        const localReminders = reminders.map(reminder => ({
-            ...reminder.toObject(),
-            scheduledTime: new Date(reminder.scheduledTime).toLocaleString()
-        }));
-
         res.render('reminders', {
-            reminders: localReminders,
+            reminders,
             title: "Reminders - Email Reminder",
             currentPage: "reminders"
         });
@@ -154,32 +121,20 @@ app.get('/reminders', async (req, res) => {
 
 //cron job to send emails
 
-cron.schedule('*/5 * * * *', async () => {
+cron.schedule('* * * * *', async () => {
     try {
         console.log('Checking for reminders to send...');
         const now = new Date();
-        console.log('Current UTC time:', now.toISOString());
-
-        // Find reminders that are due in the last 5 minutes
-        const fiveMinutesAgo = new Date(now.getTime() - 5 * 60000);
         const reminders = await Reminder.find({
-            scheduledTime: {
-                $gte: fiveMinutesAgo,
-                $lte: now
-            },
+            scheduledTime: { $lte: now },
             sent: false
-        }).limit(5); // Process only 5 reminders at a time
+        });
 
         console.log(`Found ${reminders.length} reminders to send`);
-        if (reminders.length > 0) {
-            reminders.forEach(reminder => {
-                console.log(`Reminder scheduled for: ${reminder.scheduledTime.toISOString()}`);
-            });
-        }
 
         for (const reminder of reminders) {
+            console.log(`Sending email to ${reminder.email}...`);
             try {
-                console.log(`Sending email to ${reminder.email}...`);
                 await transport.sendMail({
                     from: process.env.EMAIL_USER,
                     to: reminder.email,
@@ -193,54 +148,17 @@ cron.schedule('*/5 * * * *', async () => {
                 console.log(`Updated reminder status for ${reminder.email}`);
             } catch (emailError) {
                 console.error(`Error sending email to ${reminder.email}:`, emailError);
-                // Don't throw error, continue with next reminder
             }
         }
     } catch (error) {
         console.error('Error in email cron job:', error);
-        // Don't throw error, let the cron job continue running
     }
 });
 
-// start the server
+// start th server
+
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(PORT, () => {
-    console.log(`server is running in port ${PORT}`);
-});
-
-// Handle server errors
-server.on('error', (error) => {
-    console.error('Server error:', error);
-});
-
-// Handle process termination
-process.on('SIGTERM', () => {
-    console.log('SIGTERM signal received: closing HTTP server');
-    server.close(() => {
-        console.log('HTTP server closed');
-        process.exit(0);
-    });
-});
-
-process.on('SIGINT', () => {
-    console.log('SIGINT signal received: closing HTTP server');
-    server.close(() => {
-        console.log('HTTP server closed');
-        process.exit(0);
-    });
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-    console.error('Uncaught Exception:', error);
-    // Don't exit the process, let it continue running
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    // Don't exit the process, let it continue running
-});
+app.listen(PORT, console.log(`server is running in port ${PORT}`));
 
 
